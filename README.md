@@ -1,5 +1,5 @@
 
-# ICICI Banking System (SQLite + Python)
+# ICICI Banking System (SQLite + Flask Framework)
 
 A complete command-line banking application that allows users to create accounts, login securely, perform deposits, withdrawals, wire transfers, and view transaction history. Each transaction is logged securely per user. Sensitive information like PIN and SSN are encrypted.
 
