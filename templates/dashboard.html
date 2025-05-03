@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+{% block title %}Dashboard - ICICI Bank{% endblock %}
+{% block content %}
+<h2>Welcome to Your Dashboard</h2>
+<div class="alert alert-info">
+    <strong>Current Balance:</strong> ₹{{ "%.2f"|format(balance) }}
+</div>
+<div class="d-grid gap-2">
+    <a class="btn btn-success" href="{{ url_for('deposit') }}">Deposit Funds</a>
+    <a class="btn btn-warning" href="{{ url_for('withdraw') }}">Withdraw Funds</a>
+    <a class="btn btn-info" href="{{ url_for('transfer') }}">Wire Transfer</a>
+    <a class="btn btn-primary" href="{{ url_for('transactions') }}">View Transaction History</a>
+    <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
+</div>
+{% endblock %}

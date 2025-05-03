@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block title %}Home - ICICI Bank{% endblock %}
+{% block content %}
+<div class="text-center">
+    <h1>Welcome to ICICI Net Banking</h1>
+    <a class="btn btn-primary m-2" href="{{ url_for('register') }}">Create New Account</a>
+    <a class="btn btn-success m-2" href="{{ url_for('login') }}">Login</a>
+</div>
+{% endblock %}

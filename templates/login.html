@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% block title %}Login - ICICI Bank{% endblock %}
+{% block content %}
+<h2>Login to Your Account</h2>
+<form method="POST">
+  <input type="text" name="account_number" class="form-control mb-3" placeholder="Account Number" required>
+  <input type="password" name="pin" class="form-control mb-3" placeholder="PIN" required>
+  <button type="submit" class="btn btn-success">Login</button>
+</form>
+{% endblock %}

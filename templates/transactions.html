@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block title %}Transaction History - ICICI Bank{% endblock %}
+{% block content %}
+<h2>Your Transaction History</h2>
+<ul class="list-group">
+  {% for log in logs %}
+    <li class="list-group-item">{{ log }}</li>
+  {% else %}
+    <li class="list-group-item">No transactions found.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block title %}Withdraw - ICICI Bank{% endblock %}
+{% block content %}
+<h2>Withdraw Money</h2>
+<form method="POST">
+  <input type="number" step="0.01" name="amount" class="form-control mb-3" placeholder="Enter amount to withdraw" required>
+  <button type="submit" class="btn btn-warning">Withdraw</button>
+</form>
+{% endblock %}
