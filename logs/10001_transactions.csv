@@ -1,0 +1,3 @@
+trnsc_id,trnsc_type,amt,trnsc_ts,notes
+9f7bff38-d00a-442a-9ad8-cfc4bf12f20e,Deposited,5000.00,2025-05-11 21:14:47,Cheque
+eb607773-4d99-4713-85c2-59267cd42273,Wire,5000.00,2025-05-11 21:22:00,from 10002

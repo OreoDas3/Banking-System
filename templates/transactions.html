@@ -1,12 +1,77 @@
 {% extends "layout.html" %}
 {% block title %}Transaction History - ICICI Bank{% endblock %}
+
 {% block content %}
-<h2>Your Transaction History</h2>
-<ul class="list-group">
-  {% for log in logs %}
-    <li class="list-group-item">{{ log }}</li>
-  {% else %}
-    <li class="list-group-item">No transactions found.</li>
-  {% endfor %}
-</ul>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Your Transaction History</h2>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+
+{% if logs %}
+<div class="table-responsive">
+  <table class="table table-striped table-bordered">
+    <thead class="thead-dark">
+      <tr>
+        <th>Transaction ID</th>
+        <th>Type</th>
+        <th>Amount (₹)</th>
+        <th>Timestamp</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.trnsc_id }}</td>
+        <td>{{ log.trnsc_type }}</td>
+        <td>{{ "%.2f"|format(log.amt|float) }}</td>
+        <td>{{ log.trnsc_ts }}</td>
+        <td>{{ log.notes }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Grouped Pagination -->
+<nav aria-label="Transaction page navigation">
+  <ul class="pagination justify-content-center">
+
+    <!-- Previous Button -->
+    <li class="page-item {% if page == 1 %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('transactions', page=page-1) }}" tabindex="-1">Previous</a>
+    </li>
+
+    <!-- Ellipsis for previous group -->
+    {% if has_prev_group %}
+    <li class="page-item">
+      <a class="page-link" href="{{ url_for('transactions', page=start_page - 1) }}">…</a>
+    </li>
+    {% endif %}
+
+    <!-- Visible Page Numbers -->
+    {% for p in range(start_page, end_page + 1) %}
+    <li class="page-item {% if p == page %}active{% endif %}">
+      <a class="page-link" href="{{ url_for('transactions', page=p) }}">{{ p }}</a>
+    </li>
+    {% endfor %}
+
+    <!-- Ellipsis for next group -->
+    {% if has_next_group %}
+    <li class="page-item">
+      <a class="page-link" href="{{ url_for('transactions', page=end_page + 1) }}">…</a>
+    </li>
+    {% endif %}
+
+    <!-- Next Button -->
+    <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('transactions', page=page+1) }}">Next</a>
+    </li>
+
+  </ul>
+</nav>
+
+{% else %}
+<div class="alert alert-info">No transactions found.</div>
+{% endif %}
 {% endblock %}
