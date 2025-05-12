@@ -2,10 +2,15 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import sqlite3
 import hashlib
 import os
+import io
 from datetime import datetime
 import csv
 import uuid
-
+from dotenv import load_dotenv
+import os
+load_dotenv()
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Needed for session
 
@@ -61,12 +66,10 @@ def register():
         result = cursor.fetchone()
         acc_num = (result['MAX(account_number)'] or 10000) + 1
 
-        cursor.execute(
-            '''
+        cursor.execute('''
             INSERT INTO accounts (account_number, pin, balance, first_name, last_name, email, phone, ssn)
             VALUES (?, ?, 0.0, ?, ?, ?, ?, ?)
-        ''', (acc_num, hashed_pin, first_name, last_name, email, phone,
-              hashed_ssn))
+        ''', (acc_num, hashed_pin, first_name, last_name, email, phone, hashed_ssn))
         conn.commit()
         conn.close()
 
@@ -86,9 +89,7 @@ def login():
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM accounts WHERE account_number=? AND pin=?",
-            (acc_num, hashed_pin))
+        cursor.execute("SELECT * FROM accounts WHERE account_number=? AND pin=?", (acc_num, hashed_pin))
         user = cursor.fetchone()
         conn.close()
 
@@ -111,8 +112,7 @@ def dashboard():
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT balance FROM accounts WHERE account_number = ?",
-                   (account_number, ))
+    cursor.execute("SELECT balance FROM accounts WHERE account_number = ?", (account_number,))
     balance = cursor.fetchone()['balance']
     conn.close()
     return render_template('dashboard.html', balance=balance)
@@ -129,9 +129,8 @@ def deposit():
         notes = request.form.get('Cash', 'Cheque')
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE accounts SET balance = balance + ? WHERE account_number = ?",
-            (amount, session['account_number']))
+        cursor.execute("UPDATE accounts SET balance = balance + ? WHERE account_number = ?",
+                       (amount, session['account_number']))
         conn.commit()
 
         log_transaction(session['account_number'], "Deposited", amount, notes)
@@ -154,20 +153,17 @@ def withdraw():
         notes = request.form.get('Cash', 'Cheque')
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT balance FROM accounts WHERE account_number=?",
-                       (session['account_number'], ))
+        cursor.execute("SELECT balance FROM accounts WHERE account_number=?", (session['account_number'],))
         balance = cursor.fetchone()['balance']
 
         if amount > balance:
             flash('Insufficient funds.', 'danger')
         else:
-            cursor.execute(
-                "UPDATE accounts SET balance = balance - ? WHERE account_number = ?",
-                (amount, session['account_number']))
+            cursor.execute("UPDATE accounts SET balance = balance - ? WHERE account_number = ?",
+                           (amount, session['account_number']))
             conn.commit()
 
-            log_transaction(session['account_number'], "Withdrawn", amount,
-                            notes)
+            log_transaction(session['account_number'], "Withdrawn", amount, notes)
             flash(f'₹{amount:.2f} withdrawn successfully.', 'success')
 
         conn.close()
@@ -189,12 +185,10 @@ def transfer():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT balance FROM accounts WHERE account_number=?",
-                       (session['account_number'], ))
+        cursor.execute("SELECT balance FROM accounts WHERE account_number=?", (session['account_number'],))
         sender_balance = cursor.fetchone()['balance']
 
-        cursor.execute("SELECT * FROM accounts WHERE account_number=?",
-                       (recipient, ))
+        cursor.execute("SELECT * FROM accounts WHERE account_number=?", (recipient,))
         receiver = cursor.fetchone()
 
         if not receiver:
@@ -202,21 +196,15 @@ def transfer():
         elif amount > sender_balance:
             flash('Insufficient funds.', 'danger')
         else:
-            cursor.execute(
-                "UPDATE accounts SET balance = balance - ? WHERE account_number = ?",
-                (amount, session['account_number']))
-            cursor.execute(
-                "UPDATE accounts SET balance = balance + ? WHERE account_number = ?",
-                (amount, recipient))
+            cursor.execute("UPDATE accounts SET balance = balance - ? WHERE account_number = ?",
+                           (amount, session['account_number']))
+            cursor.execute("UPDATE accounts SET balance = balance + ? WHERE account_number = ?", (amount, recipient))
             conn.commit()
 
-            log_transaction(session['account_number'], "Wire", amount,
-                            f"to {recipient}")
-            log_transaction(recipient, "Wire", amount,
-                            f"from {session['account_number']}")
+            log_transaction(session['account_number'], "Wire", amount, f"to {recipient}")
+            log_transaction(recipient, "Wire", amount, f"from {session['account_number']}")
 
-            flash(f'₹{amount:.2f} transferred to account {recipient}!',
-                  'success')
+            flash(f'₹{amount:.2f} transferred to account {recipient}!', 'success')
 
         conn.close()
         return redirect(url_for('dashboard'))
@@ -231,17 +219,39 @@ def transactions():
         return redirect(url_for('login'))
 
     account_number = session['account_number']
-    log_filename = f'logs/{account_number}_transactions.csv'
+    filename = f'{account_number}_transactions.csv'
+    s3_folder = os.getenv('S3_FOLDER')
+    s3_key = f'{s3_folder}/{filename}' if s3_folder else filename
+    bucket_name = os.getenv('S3_BUCKET_NAME')
 
     logs = []
-    if os.path.exists(log_filename):
-        try:
-            with open(log_filename, newline='') as csvfile:
-                reader = csv.DictReader(csvfile)
-                logs = list(reader)
-        except Exception as e:
+
+    # Initialize S3 client
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.getenv('AWS_REGION')
+    )
+
+    # Fetch CSV from S3
+    try:
+        response = s3.get_object(Bucket=bucket_name, Key=s3_key)
+        body = response['Body'].read().decode('utf-8')
+        reader = csv.DictReader(io.StringIO(body))
+        logs = list(reader)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
             logs = []
-            app.logger.error(f"Failed to read log file: {e}")
+        else:
+            logs = []
+            app.logger.error(f"[ERROR] Unable to fetch transactions: {e}")
+    except BotoCoreError as e:
+        logs = []
+        app.logger.error(f"[ERROR] BotoCore error: {e}")
+    except Exception as e:
+        logs = []
+        app.logger.error(f"[ERROR] Unexpected error reading transactions: {e}")
 
     # Pagination setup
     try:
@@ -269,14 +279,17 @@ def transactions():
     has_next_group = end_page < total_pages
     has_prev_group = start_page > 1
 
-    return render_template('transactions.html',
-                           logs=logs,
-                           page=page,
-                           total_pages=total_pages,
-                           start_page=start_page,
-                           end_page=end_page,
-                           has_next_group=has_next_group,
-                           has_prev_group=has_prev_group)
+    return render_template(
+        'transactions.html',
+        logs=logs,
+        page=page,
+        total_pages=total_pages,
+        start_page=start_page,
+        end_page=end_page,
+        has_next_group=has_next_group,
+        has_prev_group=has_prev_group
+    )
+
 
 
 # Logout
@@ -291,24 +304,47 @@ def logout():
 
 
 def log_transaction(account_number, trnsc_type, amount, notes):
-    log_dir = 'logs'
-    os.makedirs(log_dir, exist_ok=True)
+    # Load S3 configurations from environment variables
+    bucket_name = os.getenv('S3_BUCKET_NAME')
+    s3_folder = os.getenv('S3_FOLDER')
+    filename = f'{account_number}_transactions.csv'
+    s3_key = f'{s3_folder}/{filename}'
 
-    log_filename = os.path.join(log_dir, f'{account_number}_transactions.csv')
     trnsc_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    trnsc_id = str(uuid.uuid4())  # Generate a UUID-based transaction ID
+    trnsc_id = str(uuid.uuid4())
 
-    # Write to CSV
-    write_header = not os.path.exists(log_filename) or os.stat(
-        log_filename).st_size == 0
+    # Initialize S3 client with AWS credentials from environment variables
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.getenv('AWS_REGION')
+    )
 
-    with open(log_filename, 'a', newline='') as f:
-        writer = csv.writer(f)
-        if write_header:
-            writer.writerow(
-                ['trnsc_id', 'trnsc_type', 'amt', 'trnsc_ts', 'notes'])
-        writer.writerow(
-            [trnsc_id, trnsc_type, f"{amount:.2f}", trnsc_ts, notes])
+    # Try to fetch existing CSV from S3
+    try:
+        response = s3.get_object(Bucket=bucket_name, Key=s3_key)
+        body = response['Body'].read().decode('utf-8')
+        csv_lines = list(csv.reader(io.StringIO(body)))
+    except s3.exceptions.NoSuchKey:
+        csv_lines = [['trnsc_id', 'trnsc_type', 'amt', 'trnsc_ts', 'notes']]
+    except (BotoCoreError, ClientError) as e:
+        print(f"[ERROR] Unable to read from S3: {e}")
+        return
+
+    # Append new row
+    csv_lines.append([trnsc_id, trnsc_type, f"{amount:.2f}", trnsc_ts, notes])
+
+    # Write back to S3
+    try:
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerows(csv_lines)
+        s3.put_object(Bucket=bucket_name, Key=s3_key, Body=output.getvalue().encode('utf-8'))
+    except (BotoCoreError, ClientError) as e:
+        print(f"[ERROR] Unable to write to S3: {e}")
+
+
 
 
 if __name__ == '__main__':
